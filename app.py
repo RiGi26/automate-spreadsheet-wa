@@ -13,12 +13,18 @@ from sheets_client import SheetsClient
 
 # ─── Setup ────────────────────────────────────────────────
 load_dotenv()
+
+# Gunakan path absolut agar bisa jalan di mana saja (lokal & server)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_DIR  = os.path.join(BASE_DIR, 'logs')
+os.makedirs(LOG_DIR, exist_ok=True)  # Buat folder logs otomatis jika belum ada
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler('logs/app.log', encoding='utf-8')
+        logging.FileHandler(os.path.join(LOG_DIR, 'app.log'), encoding='utf-8')
     ]
 )
 log = logging.getLogger(__name__)
