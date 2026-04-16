@@ -1,0 +1,84 @@
+"""
+app.py — Webhook server: Fonnte → Google Sheets
+Jalankan: python app.py
+"""
+
+import os
+import logging
+from flask import Flask, request, jsonify
+from dotenv import load_dotenv
+
+from parser_jadwal import parse_jadwal
+from sheets_client import SheetsClient
+
+# ─── Setup ────────────────────────────────────────────────
+load_dotenv()
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('logs/app.log', encoding='utf-8')
+    ]
+)
+log = logging.getLogger(__name__)
+
+app = Flask(__name__)
+sheets = SheetsClient()
+
+# ─── Webhook Endpoint ──────────────────────────────────────
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    try:
+        # 1. Ambil payload dari Fonnte
+        payload = request.get_json(silent=True) or request.form.to_dict()
+        log.info(f"Payload masuk: {payload}")
+
+        message  = str(payload.get('message') or payload.get('pesan') or payload.get('text') or '')
+        is_group = payload.get('isgroup') or payload.get('isGroup') or payload.get('is_group') or False
+        sender   = payload.get('sender') or payload.get('from') or 'unknown'
+
+        # 2. Normalisasi is_group (bisa string atau bool)
+        if isinstance(is_group, str):
+            is_group = is_group.lower() in ('true', '1', 'yes')
+
+        log.info(f"Sender: {sender} | isGroup: {is_group} | Panjang pesan: {len(message)}")
+
+        # 3. Filter: harus dari grup
+        if not is_group:
+            return jsonify(status='ignored', reason='bukan grup'), 200
+
+        # 4. Filter: harus pesan jadwal klinik
+        if 'DAFTAR KEHADIRAN ANAK' not in message.upper():
+            return jsonify(status='ignored', reason='bukan pesan target'), 200
+
+        # 5. Parse jadwal dari pesan WA
+        rows = parse_jadwal(message)
+        log.info(f"Berhasil parse {len(rows)} baris data")
+
+        if not rows:
+            return jsonify(status='error', reason='parse gagal - tidak ada data'), 200
+
+        # 6. Simpan ke Google Sheets
+        saved = sheets.append_rows(rows)
+        log.info(f"Tersimpan {saved} baris ke sheet")
+
+        return jsonify(status='ok', saved=saved, rows=rows), 200
+
+    except Exception as e:
+        log.exception(f"Error tidak terduga: {e}")
+        return jsonify(status='error', reason=str(e)), 500
+
+
+# ─── Health check ──────────────────────────────────────────
+@app.route('/', methods=['GET'])
+def health():
+    return jsonify(status='running', service='fonnte-sheets-webhook'), 200
+
+
+# ─── Run ───────────────────────────────────────────────────
+if __name__ == '__main__':
+    port = int(os.getenv('PORT', 5000))
+    debug = os.getenv('DEBUG', 'false').lower() == 'true'
+    log.info(f"Server berjalan di port {port}")
+    app.run(host='0.0.0.0', port=port, debug=debug)

@@ -1,0 +1,16 @@
+# Environment variables
+.env
+
+# Google Service Account credentials (JANGAN DI-COMMIT!)
+credentials/
+*.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Logs
+*.log
