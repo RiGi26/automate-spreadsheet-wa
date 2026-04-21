@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 
 from parser_jadwal import parse_jadwal
 from sheets_client import SheetsClient
+from absen_client import AbsenClient
 
 # ─── Setup ────────────────────────────────────────────────
 load_dotenv()
@@ -31,6 +32,7 @@ log = logging.getLogger(__name__)
 
 app = Flask(__name__)
 sheets = SheetsClient()
+absen = AbsenClient(sheets)
 
 # ─── Webhook Endpoint ──────────────────────────────────────
 @app.route('/webhook', methods=['POST'])
@@ -65,11 +67,27 @@ def webhook():
         if not rows:
             return jsonify(status='error', reason='parse gagal - tidak ada data'), 200
 
-        # 6. Simpan ke Google Sheets
+        # 6. Simpan ke Google Sheets (sheet Jadwal)
         saved = sheets.append_rows(rows)
-        log.info(f"Tersimpan {saved} baris ke sheet")
+        log.info(f"Tersimpan {saved} baris ke sheet Jadwal")
 
-        return jsonify(status='ok', saved=saved, rows=rows), 200
+        # 7. Assignment terapis otomatis
+        assigned_rows = absen.process_assignment(rows)
+        log.info(f"Assignment selesai untuk {len(assigned_rows)} pasien")
+
+        # 8. Update sheet PASIEN + catat ke RIWAYAT
+        absen.update_after_assignment(assigned_rows)
+
+        # 9. Auto-delete riwayat lama (>30 hari)
+        absen.hapus_riwayat_lama()
+
+        # Ringkasan assignment untuk response
+        summary = [
+            {'nama': r['nama'], 'jam': r['jam'], 'terapis': r.get('terapis', '-')}
+            for r in assigned_rows
+        ]
+
+        return jsonify(status='ok', saved=saved, assignment=summary), 200
 
     except Exception as e:
         log.exception(f"Error tidak terduga: {e}")
