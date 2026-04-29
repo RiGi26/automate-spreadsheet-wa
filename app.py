@@ -10,14 +10,14 @@ from dotenv import load_dotenv
 
 from parser_jadwal import parse_jadwal
 from sheets_client import SheetsClient
+from absen_client import AbsenClient
+from blast_client import BlastClient
 
-# ─── Setup ────────────────────────────────────────────────
-load_dotenv()
+load_dotenv('/home/rigizaf26/automate-spreadsheet-wa/.env')
 
-# Gunakan path absolut agar bisa jalan di mana saja (lokal & server)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_DIR  = os.path.join(BASE_DIR, 'logs')
-os.makedirs(LOG_DIR, exist_ok=True)  # Buat folder logs otomatis jika belum ada
+os.makedirs(LOG_DIR, exist_ok=True)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -29,62 +29,93 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-app = Flask(__name__)
+app    = Flask(__name__)
 sheets = SheetsClient()
+absen  = AbsenClient(sheets)
 
-# ─── Webhook Endpoint ──────────────────────────────────────
+FONNTE_TOKEN  = os.getenv("FONNTE_TOKEN", "")
+GRUP_BLAST_ID = os.getenv("GRUP_BLAST_ID", "")
+blast = BlastClient(sheets, FONNTE_TOKEN, GRUP_BLAST_ID)
+
 @app.route('/webhook', methods=['POST'])
 def webhook():
     try:
-        # 1. Ambil payload dari Fonnte
-        payload = request.get_json(silent=True) or request.form.to_dict()
+        payload  = request.get_json(silent=True) or request.form.to_dict()
         log.info(f"Payload masuk: {payload}")
 
         message  = str(payload.get('message') or payload.get('pesan') or payload.get('text') or '')
         is_group = payload.get('isgroup') or payload.get('isGroup') or payload.get('is_group') or False
         sender   = payload.get('sender') or payload.get('from') or 'unknown'
 
-        # 2. Normalisasi is_group (bisa string atau bool)
         if isinstance(is_group, str):
             is_group = is_group.lower() in ('true', '1', 'yes')
 
         log.info(f"Sender: {sender} | isGroup: {is_group} | Panjang pesan: {len(message)}")
 
-        # 3. Filter: harus dari grup
         if not is_group:
             return jsonify(status='ignored', reason='bukan grup'), 200
 
-        # 4. Filter: harus pesan jadwal klinik
+        # Filter hanya terima dari grup absensi A dan B
+        import os
+        grup_absensi = [
+            os.getenv('GRUP_ABSENSI_A', '').strip(),
+            os.getenv('GRUP_ABSENSI_B', '').strip()
+        ]
+        if sender not in grup_absensi:
+            return jsonify(status='ignored', reason='bukan grup absensi'), 200
+
         if 'DAFTAR KEHADIRAN ANAK' not in message.upper():
             return jsonify(status='ignored', reason='bukan pesan target'), 200
 
-        # 5. Parse jadwal dari pesan WA
         rows = parse_jadwal(message)
         log.info(f"Berhasil parse {len(rows)} baris data")
 
         if not rows:
             return jsonify(status='error', reason='parse gagal - tidak ada data'), 200
 
-        # 6. Simpan ke Google Sheets
         saved = sheets.append_rows(rows)
-        log.info(f"Tersimpan {saved} baris ke sheet")
+        log.info(f"Tersimpan {saved} baris ke sheet Jadwal (PENDING - menunggu assign jam 23:00)")
 
-        return jsonify(status='ok', saved=saved, rows=rows), 200
+        return jsonify(status='ok', saved=saved, message='data disimpan, assign otomatis jam 23:00'), 200
 
     except Exception as e:
         log.exception(f"Error tidak terduga: {e}")
         return jsonify(status='error', reason=str(e)), 500
 
-
-# ─── Health check ──────────────────────────────────────────
 @app.route('/', methods=['GET'])
 def health():
     return jsonify(status='running', service='fonnte-sheets-webhook'), 200
 
-
-# ─── Run ───────────────────────────────────────────────────
 if __name__ == '__main__':
-    port = int(os.getenv('PORT', 5000))
+    port  = int(os.getenv('PORT', 5000))
     debug = os.getenv('DEBUG', 'false').lower() == 'true'
     log.info(f"Server berjalan di port {port}")
     app.run(host='0.0.0.0', port=port, debug=debug)
+
+@app.route('/rebuild-rekap', methods=['POST'])
+def rebuild_rekap_endpoint():
+    secret = request.headers.get('X-Secret', '')
+    if secret != 'rebuild123':
+        return jsonify({'status': 'error', 'message': 'unauthorized'}), 401
+    try:
+        import subprocess
+        subprocess.Popen([
+            '/home/rigizaf26/automate-spreadsheet-wa/venv/bin/python3',
+            '/home/rigizaf26/automate-spreadsheet-wa/rebuild_rekap.py'
+        ])
+        return jsonify({'status': 'ok', 'message': 'rebuild started'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/process-input', methods=['POST'])
+def process_input_endpoint():
+    secret = request.headers.get('X-Secret', '')
+    if secret != 'rebuild123':
+        return jsonify({'status': 'error', 'message': 'unauthorized'}), 401
+    try:
+        from process_input import process_input_jadwal
+        import threading
+        threading.Thread(target=process_input_jadwal).start()
+        return jsonify({'status': 'ok', 'message': 'processing started'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500

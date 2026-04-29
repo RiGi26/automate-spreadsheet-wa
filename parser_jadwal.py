@@ -4,7 +4,7 @@ parser_jadwal.py — Ekstrak data jadwal dari pesan WhatsApp klinik
 
 import re
 import logging
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 log = logging.getLogger(__name__)
 
@@ -81,7 +81,8 @@ def parse_jadwal(text: str) -> list[dict]:
     """
     text_bersih = bersihkan_pesan(text)
     tanggal     = parse_tanggal(text_bersih)
-    timestamp   = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    WITA = timezone(timedelta(hours=8))
+    timestamp   = datetime.now(WITA).strftime('%d/%m/%Y %H:%M:%S')
 
     lines = [l.strip() for l in text_bersih.split('\n') if l.strip()]
 
@@ -125,7 +126,8 @@ def parse_jadwal(text: str) -> list[dict]:
             # Bersihkan karakter non-printable
             nama = re.sub(r'[^\w\s.\-]', '', nama).strip()
 
-            if not nama:
+            BLACKLIST = ['grup a', 'grup b', 'grup c', 'grup d', '-', 'kosong', 'libur']
+            if not nama or nama.lower() in BLACKLIST:
                 continue
 
             no_urut[sesi] = no_urut.get(sesi, 0) + 1
@@ -136,7 +138,8 @@ def parse_jadwal(text: str) -> list[dict]:
                 'sesi':      sesi,
                 'jam':       jam,
                 'no':        no_urut[sesi],
-                'nama':      nama
+                'nama':      nama,
+                'status':    'PENDING'
             })
             log.debug(f"  [{sesi}] {no_urut[sesi]}. {nama}")
 
