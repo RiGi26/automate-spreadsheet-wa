@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from rapidfuzz import fuzz, process
 
 log = logging.getLogger(__name__)
-FUZZY_THRESHOLD = 70
+FUZZY_THRESHOLD = 80  # dinaikkan - token_set_ratio lebih akurat
 RIWAYAT_RETENTION_DAYS = 30
 
 
@@ -121,10 +121,17 @@ class AbsenClient:
 
     def update_after_assignment(self, assigned_rows):
         try:
+            SESI_ORDER = {
+                "Sesi I":1,"Sesi II":2,"Sesi III":3,"Sesi IV":4,
+                "Sesi V":5,"Sesi VI":6,"Sesi VII":7,"Sesi VIII":8,
+                "Sesi IX":9,"Sesi X":10,"Sesi XI":11,"Sesi XII":12
+            }
+            sorted_rows = sorted(
+                [r for r in assigned_rows if r.get("terapis") != "MANUAL"],
+                key=lambda r: (SESI_ORDER.get(r.get("sesi",""), 99), r.get("jam",""))
+            )
             riwayat = []
-            for row in assigned_rows:
-                if row.get("terapis") == "MANUAL":
-                    continue
+            for row in sorted_rows:
                 riwayat.append([
                     row.get("timestamp",""), row.get("tanggal",""),
                     row.get("nama",""), row.get("no_rm",""),
@@ -133,7 +140,7 @@ class AbsenClient:
                 ])
             if riwayat:
                 self.sheets.get_worksheet("RIWAYAT").append_rows(riwayat, value_input_option="USER_ENTERED")
-                log.info("Catat " + str(len(riwayat)) + " baris ke RIWAYAT")
+                log.info("Catat " + str(len(riwayat)) + " baris ke RIWAYAT (sorted by sesi)")
         except Exception as e:
             log.error("Error update_after_assignment: " + str(e))
             raise
@@ -271,10 +278,15 @@ class AbsenClient:
             return None
         try:
             names = [p["NAMA"] for p in all_pasien]
-            match = process.extractOne(nama, names, scorer=fuzz.token_sort_ratio)
+            match = process.extractOne(nama, names, scorer=fuzz.token_set_ratio)
             if match and match[1] >= FUZZY_THRESHOLD:
+                log.info(f"Match: '{nama}' -> '{match[0]}' (score={match[1]})")
                 return all_pasien[names.index(match[0])]
-            log.warning("Pasien tidak ditemukan: " + nama)
+            match2 = process.extractOne(nama, names, scorer=fuzz.partial_ratio)
+            if match2 and match2[1] >= 90:
+                log.info(f"Partial match: '{nama}' -> '{match2[0]}' (score={match2[1]})")
+                return all_pasien[names.index(match2[0])]
+            log.warning(f"Pasien tidak ditemukan: '{nama}' (best={match[1] if match else 0})")
             return None
         except Exception as e:
             log.error("Error _match_pasien: " + str(e))

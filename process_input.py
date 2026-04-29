@@ -16,6 +16,15 @@ log = logging.getLogger(__name__)
 WITA = timezone(timedelta(hours=8))
 
 def process_input_jadwal():
+    lock_path = os.path.join(BASE_DIR, 'process_input.lock')
+    lock_file = open(lock_path, 'w')
+    try:
+        import fcntl
+        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except IOError:
+        log.warning("process_input_jadwal sudah berjalan, skip.")
+        lock_file.close()
+        return
     try:
         sc    = SheetsClient()
         absen = AbsenClient(sc)
@@ -76,6 +85,10 @@ def process_input_jadwal():
     except Exception as e:
         log.error(f"Error process_input_jadwal: {e}")
         raise
+    finally:
+        import fcntl
+        fcntl.flock(lock_file, fcntl.LOCK_UN)
+        lock_file.close()
 
 
 def _proses_tanggal(sc, absen, blast, ws_jadwal, data, tanggal):
