@@ -110,11 +110,12 @@ class AbsenClient:
                 log.warning("Override rotasi -> " + t + " (terakhir=" + terakhir + ")")
                 return t
 
-        # Override total — abaikan rotasi DAN quota (last resort)
-        for t in ["C","A","B","D"]:
-            if t in jam_quota:
-                log.warning("Override total -> " + t + " (quota habis, terakhir=" + terakhir + ")")
-                return t
+        # Override total — pilih yang daily_used paling sedikit (last resort)
+        candidates = [t for t in ["C","A","B","D"] if t in jam_quota]
+        if candidates:
+            t = min(candidates, key=lambda x: daily_used.get(x, 0))
+            log.warning("Override total -> " + t + " (quota habis, daily_used=" + str(daily_used) + ")")
+            return t
 
         return "MANUAL"
 
