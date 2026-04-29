@@ -1,9 +1,10 @@
 import sys
 import logging
 from datetime import datetime
-sys.path.insert(0, '/home/rigizaf26/automate-spreadsheet-wa')
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, BASE_DIR)
 from dotenv import load_dotenv
-load_dotenv('/home/rigizaf26/automate-spreadsheet-wa/.env')
+load_dotenv(os.path.join(BASE_DIR, '.env'))
 from sheets_client import SheetsClient
 from rapidfuzz import fuzz, process
 

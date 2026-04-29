@@ -13,7 +13,7 @@ from sheets_client import SheetsClient
 from absen_client import AbsenClient
 from blast_client import BlastClient
 
-load_dotenv('/home/rigizaf26/automate-spreadsheet-wa/.env')
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env'))
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_DIR  = os.path.join(BASE_DIR, 'logs')
@@ -37,8 +37,10 @@ FONNTE_TOKEN  = os.getenv("FONNTE_TOKEN", "")
 GRUP_BLAST_ID = os.getenv("GRUP_BLAST_ID", "")
 blast = BlastClient(sheets, FONNTE_TOKEN, GRUP_BLAST_ID)
 
-@app.route('/webhook', methods=['POST'])
+@app.route('/webhook', methods=['POST', 'GET'])
 def webhook():
+    if request.method == 'GET':
+        return jsonify(status='ok'), 200
     try:
         payload  = request.get_json(silent=True) or request.form.to_dict()
         log.info(f"Payload masuk: {payload}")
@@ -98,10 +100,10 @@ def rebuild_rekap_endpoint():
     if secret != 'rebuild123':
         return jsonify({'status': 'error', 'message': 'unauthorized'}), 401
     try:
-        import subprocess
+        import subprocess, sys
         subprocess.Popen([
-            '/home/rigizaf26/automate-spreadsheet-wa/venv/bin/python3',
-            '/home/rigizaf26/automate-spreadsheet-wa/rebuild_rekap.py'
+            sys.executable,
+            os.path.join(BASE_DIR, 'rebuild_rekap.py')
         ])
         return jsonify({'status': 'ok', 'message': 'rebuild started'})
     except Exception as e:
