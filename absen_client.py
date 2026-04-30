@@ -38,10 +38,12 @@ class AbsenClient:
                 row["terapis_terakhir"] = riwayat_map[nama_key]
                 log.info("  Riwayat terakhir %s: %s" % (row["nama"], row["terapis_terakhir"]))
             elif row["tipe_terapis"] and row["tipe_terapis"] in ROTASI:
-                idx = ROTASI.index(row["tipe_terapis"])
-                row["terapis_terakhir"] = ROTASI[(idx - 1) % len(ROTASI)]
-                log.info("  Pasien baru %s: tipe=%s set terakhir=%s" % (
-                    row["nama"], row["tipe_terapis"], row["terapis_terakhir"]))
+                tipe = row["tipe_terapis"]
+                idx_tipe   = ROTASI.index(tipe)
+                akan_dapat = ROTASI[(idx_tipe + 1) % len(ROTASI)]
+                row["terapis_terakhir"] = tipe
+                log.info("  Pasien baru %s: tipe=%s -> terakhir=%s -> prediksi dapat=%s" % (
+                    row["nama"], tipe, tipe, akan_dapat))
             else:
                 row["terapis_terakhir"] = ""
                 log.info("  Tidak ada data %s: bebas" % row["nama"])
