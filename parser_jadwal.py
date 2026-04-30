@@ -40,6 +40,8 @@ def bersihkan_pesan(text: str) -> str:
     text = text.replace('\\n', '\n').replace('%0A', '\n').replace('%0D', '\r')
     text = text.replace('\r\n', '\n').replace('\r', '\n')
     text = EMOJI_DAN_FORMAT.sub('', text)
+    # Hapus zero-width & invisible chars (penyebab nama tidak ter-parse)
+    text = re.sub(r'[\u200B-\u200F\u2060\u2061\uFEFF\u00A0\u200E\u200D\u200C]', '', text)
     return text
 
 
@@ -96,6 +98,9 @@ def parse_jadwal(text: str) -> list[dict]:
     sesi_mulai = False
 
     for line in lines:
+        # Strip invisible/zero-width chars di awal baris
+        line = re.sub(r'^[\u200B-\u200F\u2060\u2061\uFEFF\u00A0\u200E\u200D\u200C]+', '', line)
+
         # Cek apakah baris ini header sesi
         m_sesi = POLA_SESI.search(line)
         m_jam  = POLA_JAM.search(line)
