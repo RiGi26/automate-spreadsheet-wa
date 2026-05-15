@@ -245,7 +245,7 @@ class AbsenClient:
                 kapasitas = int(float(t.get("KAPASITAS", 1) or 1))
                 if nama in cuti_seharian and dadakan_perjam.get(nama) != "ALL":
                     continue
-                if (nama, jam) in cuti_perjam and cuti_perjam[(nama, jam)] == "terencana":
+                if (nama, jam) in cuti_perjam:  # skip terencana maupun dadakan per-jam
                     continue
                 if nama in cuti_seharian and dadakan_perjam.get(nama) == "ALL":
                     continue

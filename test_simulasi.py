@@ -438,6 +438,121 @@ cek("C mendapat lebih banyak dari B",
 # ══════════════════════════════════════════════════════════
 # RINGKASAN
 # ══════════════════════════════════════════════════════════
+
+# ══════════════════════════════════════════════════════════
+# SKENARIO 9: Cuti terencana per jam
+# ══════════════════════════════════════════════════════════
+header("SKENARIO 9: Cuti terencana per jam")
+print("  A cuti terencana di 09:00 -> A tidak boleh dapat pasien di slot itu")
+print()
+
+TERAPIS_CONFIG_CUTI = {
+    "A": {"jams": {"10:00": 2, "10:30": 2, "11:00": 2, "14:00": 2}},  # 09:00 dihapus
+    "B": {"jams": {"08:00": 2, "08:30": 2, "09:00": 2, "10:00": 2}},
+    "C": {"jams": {"08:00": 3, "08:30": 3, "09:00": 3, "10:00": 3}},
+    "D": {"jams": {"08:00": 1, "08:30": 1}},
+}
+
+def assign_session_custom(pasien_list, jam, maks_harian, terapis_cfg, daily_used=None):
+    if daily_used is None:
+        daily_used = {t: 0 for t in ROTASI}
+    jam_quota = {}
+    for t in terapis_cfg:
+        if jam in terapis_cfg[t]["jams"]:
+            jam_quota[t] = terapis_cfg[t]["jams"][jam]
+    jam_used = {}
+    results  = []
+    for p in pasien_list:
+        assigned = _pick_terapis(jam_quota, jam_used, daily_used, p.get("terakhir", ""), maks_harian)
+        jam_used[assigned]   = jam_used.get(assigned, 0) + 1
+        daily_used[assigned] = daily_used.get(assigned, 0) + 1
+        results.append({**p, "assigned": assigned})
+    return results, daily_used
+
+pasien_09 = [{"nama": "P%d" % i, "terakhir": ""} for i in range(1, 4)]
+hasil9, _ = assign_session_custom(pasien_09, "09:00", {}, TERAPIS_CONFIG_CUTI)
+terapis_dapat9 = [r["assigned"] for r in hasil9]
+cek("A tidak dapat pasien di slot cuti 09:00",
+    "A" not in terapis_dapat9,
+    "dapat: %s" % terapis_dapat9)
+cek("Semua pasien tetap ter-assign (bukan MANUAL)",
+    all(r["assigned"] != "MANUAL" for r in hasil9),
+    str(terapis_dapat9))
+
+# ══════════════════════════════════════════════════════════
+# SKENARIO 10: Cuti dadakan per jam + cover quota
+# ══════════════════════════════════════════════════════════
+header("SKENARIO 10: Cuti dadakan per jam")
+print("  A cuti dadakan 09:00,10:00,10:30 (dari data CUTI nyata 25/04/2026)")
+print("  -> A dihapus dari slot tersebut, cover (C) dapat +1 quota")
+print()
+
+# Simulasi: slot 09:00, A absen, C dapat quota normal + 1 extra (cover A)
+TERAPIS_DADAKAN = {
+    "A": {"jams": {"10:00": 2, "14:00": 2, "14:30": 2, "15:00": 2}},  # 09:00,10:30,11:00 dihapus
+    "B": {"jams": {"08:00": 2, "08:30": 2, "09:00": 2, "10:00": 2, "10:30": 2, "11:00": 2}},
+    "C": {"jams": {"08:00": 3, "08:30": 3, "09:00": 3, "10:00": 3, "10:30": 3, "11:00": 3}},
+    "D": {"jams": {"08:00": 1, "08:30": 1}},
+}
+
+# Di slot 09:00: A tidak ada, C mendapat +1 cover quota (total 3+1=4)
+jam_quota_dadakan = {"B": 2, "C": 3 + 1}  # C cover A
+jam_used_d = {}
+daily_d    = {t: 0 for t in ROTASI}
+
+# 5 pasien di 09:00 (melebihi kapasitas normal B+C=5, tapi C ada +1 jadi total 6)
+pasien_dadakan = [{"nama": "P%d" % i, "terakhir": ""} for i in range(1, 6)]
+hasil10 = []
+for p in pasien_dadakan:
+    assigned = _pick_terapis(jam_quota_dadakan, jam_used_d, daily_d, p.get("terakhir", ""), {})
+    jam_used_d[assigned]  = jam_used_d.get(assigned, 0) + 1
+    daily_d[assigned]     = daily_d.get(assigned, 0) + 1
+    hasil10.append({**p, "assigned": assigned})
+
+dist10 = {}
+for r in hasil10:
+    dist10[r["assigned"]] = dist10.get(r["assigned"], 0) + 1
+
+cek("A tidak dapat pasien di slot dadakan",
+    "A" not in dist10,
+    "distribusi: %s" % dist10)
+cek("B tidak melebihi kapasitas 2",
+    dist10.get("B", 0) <= 2,
+    "B=%d" % dist10.get("B", 0))
+cek("C tidak melebihi kapasitas cover (3+1=4)",
+    dist10.get("C", 0) <= 4,
+    "C=%d/4" % dist10.get("C", 0))
+cek("Semua 5 pasien ter-assign",
+    all(r["assigned"] != "MANUAL" for r in hasil10),
+    str(dist10))
+
+# ══════════════════════════════════════════════════════════
+# SKENARIO 11: Cuti terencana seharian
+# ══════════════════════════════════════════════════════════
+header("SKENARIO 11: Cuti terencana seharian")
+print("  B cuti terencana ALL (dari data CUTI nyata 26/04/2026)")
+print("  -> B tidak boleh dapat pasien di hari itu sama sekali")
+print()
+
+TERAPIS_TANPA_B = {
+    "A": {"jams": {"09:00": 2, "10:00": 2, "10:30": 2, "11:00": 2}},
+    "C": {"jams": {"08:00": 3, "08:30": 3, "09:00": 3, "10:00": 3}},
+    "D": {"jams": {"08:00": 1, "08:30": 1}},
+}
+
+daily11 = {t: 0 for t in ROTASI}
+all_hasil11 = []
+for jam11, n11 in [("08:00", 3), ("09:00", 3), ("10:00", 3)]:
+    pasien11 = [{"nama": "P%d" % i, "terakhir": ""} for i in range(n11)]
+    h11, daily11 = assign_session_custom(pasien11, jam11, {}, TERAPIS_TANPA_B, daily11)
+    all_hasil11.extend(h11)
+
+cek("B tidak dapat pasien sama sekali",
+    all(r["assigned"] != "B" for r in all_hasil11),
+    "distribusi: %s" % {r["assigned"]: sum(1 for x in all_hasil11 if x["assigned"]==r["assigned"]) for r in all_hasil11})
+cek("Semua 9 pasien ter-assign",
+    all(r["assigned"] != "MANUAL" for r in all_hasil11))
+
 print()
 print("=" * 60)
 print("  HASIL: %d PASS, %d FAIL" % (PASS, FAIL))
