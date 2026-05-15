@@ -95,9 +95,9 @@ def webhook():
             return jsonify(status='ignored', reason='duplikat', detail='data sudah ada'), 200
 
         saved = sheets.append_rows(rows_baru)
-        log.info(f"Tersimpan {saved} baris ke sheet Jadwal (PENDING - menunggu assign jam 10:00 WITA)")
+        log.info(f"Tersimpan {saved} baris ke sheet Jadwal (PENDING - menunggu assign jam 22:00 WITA)")
 
-        return jsonify(status='ok', saved=saved, message='data disimpan, assign otomatis jam 10:00 WITA'), 200
+        return jsonify(status='ok', saved=saved, message='data disimpan, assign otomatis jam 22:00 WITA'), 200
 
     except Exception as e:
         log.exception(f"Error tidak terduga: {e}")
