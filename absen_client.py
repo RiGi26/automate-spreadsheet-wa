@@ -19,7 +19,7 @@ class AbsenClient:
 
         tanggal = rows[0]["tanggal"]
 
-        terapis_config, dadakan_map = self._get_terapis_config(tanggal)
+        terapis_config, dadakan_map, maks_harian = self._get_terapis_config(tanggal)
         if not terapis_config:
             for r in rows:
                 r["terapis"] = "MANUAL"
@@ -39,11 +39,10 @@ class AbsenClient:
                 log.info("  Riwayat terakhir %s: %s" % (row["nama"], row["terapis_terakhir"]))
             elif row["tipe_terapis"] and row["tipe_terapis"] in ROTASI:
                 tipe = row["tipe_terapis"]
-                idx_tipe   = ROTASI.index(tipe)
-                akan_dapat = ROTASI[(idx_tipe + 1) % len(ROTASI)]
-                row["terapis_terakhir"] = tipe
-                log.info("  Pasien baru %s: tipe=%s -> terakhir=%s -> prediksi dapat=%s" % (
-                    row["nama"], tipe, tipe, akan_dapat))
+                idx_tipe = ROTASI.index(tipe)
+                # Set terakhir ke sebelum tipe agar rotasi pertama jatuh tepat ke tipe
+                row["terapis_terakhir"] = ROTASI[(idx_tipe - 1) % len(ROTASI)]
+                log.info("  Pasien baru %s: tipe=%s -> akan dapat=%s" % (row["nama"], tipe, tipe))
             else:
                 row["terapis_terakhir"] = ""
                 log.info("  Tidak ada data %s: bebas" % row["nama"])
@@ -61,7 +60,7 @@ class AbsenClient:
             jam_quota = {}
             for t in terapis_config:
                 if jam in terapis_config[t]["jams"]:
-                    jam_quota[t] = 1
+                    jam_quota[t] = terapis_config[t]["jams"][jam]
 
             for (t_cuti, j), cover_list in dadakan_map.items():
                 if j == jam:
@@ -75,7 +74,7 @@ class AbsenClient:
 
             for p in pasien_list:
                 terakhir = p.get("terapis_terakhir", "")
-                assigned = self._pick_terapis(jam_quota, quota_used[jam], daily_used, terakhir)
+                assigned = self._pick_terapis(jam_quota, quota_used[jam], daily_used, terakhir, maks_harian)
                 p["terapis"] = assigned
                 if assigned != "MANUAL":
                     quota_used[jam][assigned] = quota_used[jam].get(assigned, 0) + 1
@@ -88,11 +87,13 @@ class AbsenClient:
         log.info("Distribusi harian: %s" % str(dict(daily_used)))
         return results
 
-    def _pick_terapis(self, jam_quota, jam_used, daily_used, terakhir):
+    def _pick_terapis(self, jam_quota, jam_used, daily_used, terakhir, maks_harian):
         def has_quota(t):
             return jam_used.get(t, 0) < jam_quota.get(t, 0)
+        def within_daily(t):
+            return daily_used.get(t, 0) < maks_harian.get(t, 999)
         def available(t):
-            return t in jam_quota and has_quota(t)
+            return t in jam_quota and has_quota(t) and within_daily(t)
 
         if terakhir and terakhir in ROTASI:
             idx = ROTASI.index(terakhir)
@@ -105,10 +106,26 @@ class AbsenClient:
         if candidates:
             return min(candidates, key=lambda x: daily_used.get(x, 0))
 
-        candidates2 = [t for t in ROTASI if t in jam_quota]
+        # Fallback 1: slot penuh tapi masih dalam batas harian — overflow slot
+        candidates2 = [t for t in ROTASI if t in jam_quota and within_daily(t)]
         if candidates2:
             t = min(candidates2, key=lambda x: daily_used.get(x, 0))
-            log.warning("Override quota -> %s" % t)
+            log.warning("Override quota slot -> %s (slot penuh, daily masih ok)" % t)
+            return t
+
+        # Fallback 2: slot masih ada tapi daily sudah maks — overflow daily
+        candidates3 = [t for t in ROTASI if t in jam_quota and has_quota(t)]
+        if candidates3:
+            t = min(candidates3, key=lambda x: daily_used.get(x, 0))
+            log.warning("Override maks_harian -> %s (daily=%d, maks=%d)" % (
+                t, daily_used.get(t, 0), maks_harian.get(t, 999)))
+            return t
+
+        # Fallback 3 (last resort): semua constraint diabaikan
+        candidates4 = [t for t in ROTASI if t in jam_quota]
+        if candidates4:
+            t = min(candidates4, key=lambda x: daily_used.get(x, 0))
+            log.warning("Override semua constraint -> %s" % t)
             return t
 
         return "MANUAL"
@@ -222,9 +239,10 @@ class AbsenClient:
                 log.info("Cuti per jam: " + str(cuti_perjam))
             config = {}
             for t in all_terapis:
-                nama = str(t["TERAPIS"]).upper()
-                jam  = self._norm_jam(str(t["JAM"]))
-                tipe = str(t["TIPE"]).lower()
+                nama      = str(t["TERAPIS"]).upper()
+                jam       = self._norm_jam(str(t["JAM"]))
+                tipe      = str(t["TIPE"]).lower()
+                kapasitas = int(float(t.get("KAPASITAS", 1) or 1))
                 if nama in cuti_seharian and dadakan_perjam.get(nama) != "ALL":
                     continue
                 if (nama, jam) in cuti_perjam and cuti_perjam[(nama, jam)] == "terencana":
@@ -232,8 +250,8 @@ class AbsenClient:
                 if nama in cuti_seharian and dadakan_perjam.get(nama) == "ALL":
                     continue
                 if nama not in config:
-                    config[nama] = {"jams": set(), "tipe": tipe}
-                config[nama]["jams"].add(jam)
+                    config[nama] = {"jams": {}, "tipe": tipe}
+                config[nama]["jams"][jam] = kapasitas
             log.info("Terapis aktif: " + str(list(config.keys())))
             dadakan_result = {}
             for key, val in dadakan_perjam.items():
@@ -246,10 +264,42 @@ class AbsenClient:
                             break
                     dadakan_result[(t_cuti, jam_cuti)] = cover
                     log.info("Dadakan %s jam %s -> cover: %s" % (t_cuti, jam_cuti, str(cover)))
-            return config, dadakan_result
+
+            # Load batas maksimal pasien harian per terapis
+            maks_harian = {}
+            try:
+                all_maks = self.sheets.get_worksheet("MAKS_TERAPIS").get_all_records()
+                for m in all_maks:
+                    nama_t = str(m.get("TERAPIS", "")).strip().upper()
+                    maks   = m.get("MAKS_HARIAN", "")
+                    if nama_t and maks != "":
+                        maks_harian[nama_t] = int(float(maks))
+            except Exception as ex:
+                log.warning("Sheet MAKS_TERAPIS tidak ditemukan atau error: " + str(ex))
+
+            # Enforce rule: D selalu 2, |A-B| <= 1, C > max(A,B)
+            maks_harian["D"] = 2
+
+            maks_a = maks_harian.get("A")
+            maks_b = maks_harian.get("B")
+            if maks_a is not None and maks_b is not None and abs(maks_a - maks_b) > 1:
+                log.warning("Maks A(%d) dan B(%d) selisih >1, periksa sheet MAKS_TERAPIS" % (maks_a, maks_b))
+            elif maks_a is not None and maks_b is None:
+                maks_harian["B"] = maks_a
+            elif maks_b is not None and maks_a is None:
+                maks_harian["A"] = maks_b
+
+            maks_c = maks_harian.get("C")
+            ab_vals = [v for k, v in maks_harian.items() if k in ("A", "B") and v is not None]
+            maks_max_ab = max(ab_vals) if ab_vals else None
+            if maks_c is not None and maks_max_ab is not None and maks_c <= maks_max_ab:
+                log.warning("Maks C(%d) tidak lebih besar dari max(A,B)=%d, periksa sheet MAKS_TERAPIS" % (maks_c, maks_max_ab))
+
+            log.info("Maks harian (setelah enforce): " + str(maks_harian))
+            return config, dadakan_result, maks_harian
         except Exception as e:
             log.error("Error _get_terapis_config: " + str(e))
-            return {}, {}
+            return {}, {}, {}
 
     def _load_all_pasien(self):
         try:

@@ -17,12 +17,13 @@ SCOPES = [
 ]
 
 SHEET_HEADERS = {
-    'Jadwal':  ['Timestamp', 'Tanggal', 'Sesi', 'Jam', 'No', 'Nama', 'STATUS'],
-    'PASIEN':  ['NO', 'NAMA', 'TGL_LAHIR', 'NO_RM', 'NO_BPJS', 'TIPE_PASIEN', 'DIAGNOSA', 'TERAPIS_TERAKHIR', 'TGL_SESI_TERAKHIR'],
-    'RIWAYAT': ['TIMESTAMP', 'TANGGAL', 'NAMA', 'NO_RM', 'SESI', 'JAM', 'TERAPIS'],
-    'TERAPIS': ['TERAPIS', 'JAM', 'KAPASITAS', 'TIPE'],
-    'CUTI':        ['TERAPIS', 'TGL_MULAI', 'TGL_SELESAI', 'KETERANGAN'],
-    'BLAST_QUEUE': ['STATUS', 'PESAN', 'TIMESTAMP'],
+    'Jadwal':       ['Timestamp', 'Tanggal', 'Sesi', 'Jam', 'No', 'Nama', 'STATUS'],
+    'PASIEN':       ['NO', 'NAMA', 'TGL_LAHIR', 'NO_RM', 'NO_BPJS', 'TIPE_PASIEN', 'DIAGNOSA', 'TERAPIS_TERAKHIR', 'TGL_SESI_TERAKHIR'],
+    'RIWAYAT':      ['TIMESTAMP', 'TANGGAL', 'NAMA', 'NO_RM', 'SESI', 'JAM', 'TERAPIS'],
+    'TERAPIS':      ['TERAPIS', 'JAM', 'KAPASITAS', 'TIPE'],
+    'CUTI':         ['TERAPIS', 'TGL_MULAI', 'TGL_SELESAI', 'JAM', 'TIPE', 'KETERANGAN'],
+    'MAKS_TERAPIS': ['TERAPIS', 'MAKS_HARIAN'],
+    'BLAST_QUEUE':  ['STATUS', 'PESAN', 'TIMESTAMP'],
 }
 
 DEFAULT_TERAPIS = [
