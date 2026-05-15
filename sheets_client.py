@@ -100,6 +100,32 @@ class SheetsClient:
             self._worksheets[name] = self._get_or_create_worksheet(name, header)
         return self._worksheets[name]
 
+    def filter_duplikat(self, rows):
+        """Saring baris yang sudah ada di Jadwal (cek per tanggal+sesi+nama)."""
+        if not rows:
+            return rows
+        try:
+            existing    = self.get_worksheet('Jadwal').get_all_records()
+            tanggal_cek = rows[0]['tanggal']
+            existing_keys = {
+                (str(r.get('Tanggal', '')).strip(),
+                 str(r.get('Sesi', '')).strip(),
+                 str(r.get('Nama', '')).strip().lower())
+                for r in existing
+                if str(r.get('Tanggal', '')).strip() == tanggal_cek
+            }
+            baru = [
+                r for r in rows
+                if (r['tanggal'], r['sesi'], r['nama'].strip().lower()) not in existing_keys
+            ]
+            lewati = len(rows) - len(baru)
+            if lewati > 0:
+                log.warning(f"Duplikat Fonnte: {lewati}/{len(rows)} baris dilewati (sudah ada di Jadwal)")
+            return baru
+        except Exception as e:
+            log.warning(f"Gagal cek duplikat, simpan semua: {e}")
+            return rows  # safe fallback
+
     def append_rows(self, rows):
         if not rows:
             return 0

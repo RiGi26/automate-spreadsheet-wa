@@ -553,6 +553,112 @@ cek("B tidak dapat pasien sama sekali",
 cek("Semua 9 pasien ter-assign",
     all(r["assigned"] != "MANUAL" for r in all_hasil11))
 
+# ══════════════════════════════════════════════════════════
+# SKENARIO 12: Duplikat webhook dari Fonnte — filter_duplikat
+# ══════════════════════════════════════════════════════════
+header("SKENARIO 12: Duplikat webhook dari Fonnte (filter_duplikat)")
+print("  Simulasi Fonnte kirim webhook 2x dengan data persis sama")
+print()
+
+def simulasi_filter_duplikat(existing_rows, incoming_rows):
+    """Tiruan logika filter_duplikat dari sheets_client.py."""
+    if not incoming_rows:
+        return incoming_rows
+    tanggal_cek = incoming_rows[0]['tanggal']
+    existing_keys = {
+        (r['tanggal'], r['sesi'], r['nama'].strip().lower())
+        for r in existing_rows
+        if r['tanggal'] == tanggal_cek
+    }
+    baru = [
+        r for r in incoming_rows
+        if (r['tanggal'], r['sesi'], r['nama'].strip().lower()) not in existing_keys
+    ]
+    return baru
+
+# Data webhook pertama
+webhook1 = [
+    {'tanggal': '29/04/2026', 'sesi': 'Sesi I',  'nama': 'M. Rayhan',   'jam': '08:00'},
+    {'tanggal': '29/04/2026', 'sesi': 'Sesi I',  'nama': 'Rasya Nugraha','jam': '08:00'},
+    {'tanggal': '29/04/2026', 'sesi': 'Sesi II', 'nama': 'Kenneth',      'jam': '08:30'},
+]
+
+# Webhook kedua persis sama (duplikat Fonnte)
+webhook2 = list(webhook1)
+
+# Setelah webhook pertama tersimpan, webhook kedua harus di-filter semua
+existing = list(webhook1)
+hasil_filter = simulasi_filter_duplikat(existing, webhook2)
+cek("Webhook 2x persis sama -> semua difilter (0 baris baru)",
+    len(hasil_filter) == 0,
+    "baris lolos filter: %d" % len(hasil_filter))
+
+# Webhook ketiga dengan 1 pasien baru (koreksi, bukan duplikat)
+webhook3 = webhook1 + [{'tanggal': '29/04/2026', 'sesi': 'Sesi III', 'nama': 'Budi Baru', 'jam': '09:00'}]
+hasil_filter3 = simulasi_filter_duplikat(existing, webhook3)
+cek("Webhook dengan 1 pasien baru -> hanya 1 baris baru yang lolos",
+    len(hasil_filter3) == 1,
+    "baris lolos: %d (seharusnya 1)" % len(hasil_filter3))
+cek("Baris yang lolos adalah pasien baru",
+    hasil_filter3[0]['nama'] == 'Budi Baru' if hasil_filter3 else False)
+
+# Tanggal berbeda tidak terdampak filter
+webhook_beda_tgl = [
+    {'tanggal': '30/04/2026', 'sesi': 'Sesi I', 'nama': 'M. Rayhan', 'jam': '08:00'},
+]
+hasil_beda = simulasi_filter_duplikat(existing, webhook_beda_tgl)
+cek("Tanggal berbeda tidak ikut terfilter",
+    len(hasil_beda) == 1,
+    "baris lolos: %d (seharusnya 1)" % len(hasil_beda))
+
+# ══════════════════════════════════════════════════════════
+# SKENARIO 13: Error notification — format pesan error
+# ══════════════════════════════════════════════════════════
+header("SKENARIO 13: Error notification ke BLAST_QUEUE")
+print("  Ketika assignment gagal, pesan error harus masuk BLAST_QUEUE")
+print()
+
+from datetime import datetime, timezone, timedelta
+WITA = timezone(timedelta(hours=8))
+
+def buat_pesan_error(error_msg):
+    ts = datetime.now(WITA).strftime("%d/%m/%Y %H:%M:%S")
+    return (
+        "GAGAL ASSIGNMENT\n"
+        "Error: %s\n"
+        "Waktu: %s\n"
+        "Cek log Railway untuk detail." % (error_msg, ts)
+    )
+
+pesan = buat_pesan_error("Google Sheets API quota exceeded")
+cek("Pesan error mengandung 'GAGAL ASSIGNMENT'",
+    "GAGAL ASSIGNMENT" in pesan)
+cek("Pesan error mengandung detail error",
+    "Google Sheets API quota exceeded" in pesan)
+cek("Pesan error mengandung timestamp",
+    datetime.now(WITA).strftime("%d/%m/%Y") in pesan)
+
+# ══════════════════════════════════════════════════════════
+# SKENARIO 14: Timing konsisten — jam assignment
+# ══════════════════════════════════════════════════════════
+header("SKENARIO 14: Timing konsisten di response webhook")
+print("  Response webhook harus bilang '10:00 WITA', bukan '23:00'")
+print()
+
+with open("app.py", encoding="utf-8") as f:
+    app_content = f.read()
+
+cek("Response webhook menyebut '10:00 WITA' (bukan '23:00')",
+    "10:00 WITA" in app_content and "23:00" not in app_content)
+cek("Route /process-input didefinisikan sebelum if __main__",
+    app_content.index("@app.route('/process-input'") < app_content.index("if __name__"))
+cek("Route /rebuild-rekap didefinisikan sebelum if __main__",
+    app_content.index("@app.route('/rebuild-rekap'") < app_content.index("if __name__"))
+cek("Thread menggunakan run_with_notif (ada error handling)",
+    "run_with_notif" in app_content)
+cek("filter_duplikat dipanggil di webhook",
+    "filter_duplikat" in app_content)
+
 print()
 print("=" * 60)
 print("  HASIL: %d PASS, %d FAIL" % (PASS, FAIL))
