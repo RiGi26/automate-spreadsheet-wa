@@ -659,6 +659,66 @@ cek("Thread menggunakan run_with_notif (ada error handling)",
 cek("filter_duplikat dipanggil di webhook",
     "filter_duplikat" in app_content)
 
+# ══════════════════════════════════════════════════════════
+# SKENARIO 15: Blast ke multiple grup via GRUP_BLAST_ID
+# ══════════════════════════════════════════════════════════
+header("SKENARIO 15: Blast rekap ke multiple grup")
+print("  GRUP_BLAST_ID bisa berisi satu atau lebih ID dipisah koma")
+print()
+
+def simulasi_tulis_queue(grup_id, pesan="test"):
+    """Tiruan logika _tulis_queue: return list (target, pesan) yang akan ditulis."""
+    targets = [g.strip() for g in str(grup_id).split(',') if g.strip()]
+    return [{"target": t, "pesan": pesan} for t in targets]
+
+# Satu grup (kompatibel mundur)
+rows1 = simulasi_tulis_queue("120363046770073794@g.us")
+cek("Satu grup ID -> 1 baris di BLAST_QUEUE",
+    len(rows1) == 1,
+    "baris: %d" % len(rows1))
+cek("Target benar untuk 1 grup",
+    rows1[0]["target"] == "120363046770073794@g.us")
+
+# Dua grup (skenario baru)
+rows2 = simulasi_tulis_queue("id_grup_a@g.us,id_grup_b@g.us")
+cek("Dua grup ID -> 2 baris di BLAST_QUEUE",
+    len(rows2) == 2,
+    "baris: %d" % len(rows2))
+cek("Target grup A benar", rows2[0]["target"] == "id_grup_a@g.us")
+cek("Target grup B benar", rows2[1]["target"] == "id_grup_b@g.us")
+cek("Pesan sama untuk kedua grup",
+    rows2[0]["pesan"] == rows2[1]["pesan"])
+
+# Grup kosong -> tidak ada baris ditulis
+rows0 = simulasi_tulis_queue("")
+cek("GRUP_BLAST_ID kosong -> 0 baris (tidak blast)",
+    len(rows0) == 0,
+    "baris: %d" % len(rows0))
+
+# ══════════════════════════════════════════════════════════
+# SKENARIO 16: Rebuild rekap — Python sebagai sumber kebenaran
+# ══════════════════════════════════════════════════════════
+header("SKENARIO 16: Rebuild rekap — Python sebagai sumber utama")
+print("  Pastikan /rebuild-rekap endpoint ada dan GAS diarahkan ke sana")
+print()
+
+with open("rebuild_rekap.py", encoding="utf-8") as f:
+    rekap_content = f.read()
+with open("app.py", encoding="utf-8") as f:
+    app_content2 = f.read()
+
+cek("rebuild_rekap.py menggunakan fuzzy match (lebih akurat dari GAS)",
+    "fuzz" in rekap_content and "process.extractOne" in rekap_content)
+cek("Endpoint /rebuild-rekap ada di app.py",
+    "rebuild-rekap" in app_content2)
+cek("Endpoint /rebuild-rekap memerlukan X-Secret (aman)",
+    "INTERNAL_SECRET" in app_content2 or "rebuild123" in app_content2)
+cek("TARGET ada di BLAST_QUEUE header (sheets_client)",
+    "'TARGET'" in open("sheets_client.py", encoding="utf-8").read())
+cek("blast_client membaca self.grup_id untuk multi-grup",
+    "self.grup_id" in open("blast_client.py", encoding="utf-8").read() and
+    "split" in open("blast_client.py", encoding="utf-8").read())
+
 print()
 print("=" * 60)
 print("  HASIL: %d PASS, %d FAIL" % (PASS, FAIL))

@@ -28,10 +28,15 @@ class BlastClient:
 
     def _tulis_queue(self, pesan, tanggal):
         try:
-            ws = self.sheets.get_worksheet("BLAST_QUEUE")
+            ws        = self.sheets.get_worksheet("BLAST_QUEUE")
             timestamp = datetime.now(WITA).strftime("%d/%m/%Y %H:%M:%S")
-            ws.append_row(["PENDING", pesan, timestamp], value_input_option="USER_ENTERED")
-            log.info("Pesan rekap ditulis ke BLAST_QUEUE")
+            targets   = [g.strip() for g in str(self.grup_id).split(',') if g.strip()]
+            if not targets:
+                log.warning("GRUP_BLAST_ID tidak dikonfigurasi, blast dilewati")
+                return False
+            for target in targets:
+                ws.append_row(["PENDING", pesan, timestamp, target], value_input_option="USER_ENTERED")
+            log.info("Pesan rekap ditulis ke BLAST_QUEUE untuk %d grup" % len(targets))
             return True
         except Exception as e:
             log.error("Error _tulis_queue: " + str(e))
