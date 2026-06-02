@@ -1,0 +1,41 @@
+# Render Blueprint — backend webhook klinik (pengganti Railway)
+# Cara pakai: Render Dashboard → New → Blueprint → pilih repo ini.
+# Nilai env var ber-"sync: false" diisi MANUAL lewat dashboard Render,
+# JANGAN ditulis di file ini (file ini ter-commit ke GitHub).
+services:
+  - type: web
+    name: klinik-webhook
+    runtime: python
+    plan: free
+    region: singapore
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    healthCheckPath: /
+    envVars:
+      # ── Wajib ──────────────────────────────────────────────
+      - key: SPREADSHEET_ID
+        sync: false
+      - key: GOOGLE_CREDS_JSON_CONTENT   # paste seluruh isi JSON service account
+        sync: false
+      - key: GRUP_BLAST_ID               # ID grup WA tujuan rekap (boleh koma utk multi-grup)
+        sync: false
+      - key: INTERNAL_SECRET             # harus sama dgn X-Secret di GAS (default: rebuild123)
+        sync: false
+      # ── Nama tampilan terapis (untuk pesan rekap) ──────────
+      - key: NAMA_TERAPIS_A
+        sync: false
+      - key: NAMA_TERAPIS_B
+        sync: false
+      - key: NAMA_TERAPIS_C
+        sync: false
+      - key: NAMA_TERAPIS_D
+        sync: false
+      # ── Opsional ───────────────────────────────────────────
+      - key: BLAST_ENABLED
+        value: "True"
+      - key: FONNTE_TOKEN
+        sync: false
+      - key: GRUP_ABSENSI_A
+        sync: false
+      - key: GRUP_ABSENSI_B
+        sync: false

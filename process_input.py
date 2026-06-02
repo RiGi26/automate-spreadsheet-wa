@@ -28,7 +28,7 @@ def process_input_jadwal():
     try:
         sc    = SheetsClient()
         absen = AbsenClient(sc)
-        blast = BlastClient(sc, None, None)
+        blast = BlastClient(sc, os.getenv("FONNTE_TOKEN", ""), os.getenv("GRUP_BLAST_ID", ""))
 
         ws_jadwal = sc.get_worksheet('Jadwal')
         data      = ws_jadwal.get_all_values()

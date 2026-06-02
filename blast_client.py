@@ -30,7 +30,7 @@ class BlastClient:
         try:
             ws        = self.sheets.get_worksheet("BLAST_QUEUE")
             timestamp = datetime.now(WITA).strftime("%d/%m/%Y %H:%M:%S")
-            targets   = [g.strip() for g in str(self.grup_id).split(',') if g.strip()]
+            targets   = [g.strip() for g in str(self.grup_id).split(',') if g.strip() and g.strip().lower() != 'none']
             if not targets:
                 log.warning("GRUP_BLAST_ID tidak dikonfigurasi, blast dilewati")
                 return False
